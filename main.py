@@ -10,7 +10,6 @@ class sniper:
         with open('config.json', 'r') as file: 
             content = json.load(file)
             self.items = content['items']
-            assert len(self.items) != 0, "Please provide atleast one item id"
             self.globalPrice = content["global_max_price"]
             self.waitTime = content["antiratelimit"]['v1_wait_time']
             self.v2threads = content["searcherv2_threads"]
