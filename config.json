@@ -1,8 +1,13 @@
 {
     "global_max_price": 0,
-    "searcherv2_threads": 1,
-    "autosearch": true,
-    "auto_search_key": "",
+    "auto_search": {
+        "autosearch": true,
+        "auto_search_key": ""
+    },
+    "threads": {
+        "searcherv2_threads": 1,
+        "buy_threads": 4
+    },  
     "antiratelimit": {
         "v1_wait_time": 1,
         "v2_max_requests_per_minute": 1000,
