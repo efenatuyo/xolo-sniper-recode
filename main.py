@@ -12,11 +12,12 @@ class sniper:
             self.items = content['items']
             self.globalPrice = content["global_max_price"]
             self.waitTime = content["antiratelimit"]['v1_wait_time']
-            self.v2threads = content["searcherv2_threads"]
+            self.v2threads = content["threads"]["searcherv2_threads"]
+            self.buy_threads = content['threads']['buy_threads']
             self.v2_max_requests_per_minute = content["antiratelimit"]["v2_max_requests_per_minute"]
             self.v2_safe_multiplier = content["antiratelimit"]["v2_safe_multiplier"]
-            self.auto = content['autosearch']
-            self.key = content["auto_search_key"]
+            self.auto = content["auto_search"]['autosearch']
+            self.key = content["auto_search"]["auto_search_key"]
         self.errorLogs = []
         self.buyLogs = []
         self.searchLogs = []
@@ -131,12 +132,10 @@ class sniper:
                         if info["price"] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly' or item.get('Remaining', 1) == 0:
                             self.items.remove(info['item_id'])
                         continue
-                    tasks = []
+                    tasks = [asyncio.create_task(self.buy_item(session, info)) for i in range(self.buy_threads)]
                     if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
                         task = asyncio.create_task(session.post("https://xolonoess.amaishn.repl.co/items", headers={"itemid": str(info['item_id'])}))
                         tasks.append(task)
-                    task = asyncio.create_task(self.buy_item(session, info))
-                    tasks.append(task)
                     await asyncio.gather(*tasks)
                     
              except Exception as e:
@@ -174,12 +173,10 @@ class sniper:
                                     if productid_response.status != 200:
                                         continue
                                     info["productid_data"] = (await productid_response.json())[0]['collectibleProductId']
-                                    tasks = []
+                                    tasks = [asyncio.create_task(self.buy_item(session, info)) for i in range(self.buy_threads)]
                                     if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
                                         task = asyncio.create_task(session.post("https://xolonoess.amaishn.repl.co/items", headers={"itemid": str(info['item_id'])}))
                                         tasks.append(task)
-                                    task = asyncio.create_task(self.buy_item(session, info))
-                                    tasks.append(task)
                                     await asyncio.gather(*tasks)
                         elif response.status == 429:
                             self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V1 hit ratelimit")
@@ -226,7 +223,9 @@ class sniper:
                         info["price"] = 0
                     if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
                         return
-                    await self.buy_item(session, info)
+                    tasks = [asyncio.create_task(self.buy_item(session, info)) for i in range(self.buy_threads)]
+                    await asyncio.gather(*tasks)
+                    
                 elif response.status == 429:
                     self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V2 hit ratelimit")
         
