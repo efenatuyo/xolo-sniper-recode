@@ -27,7 +27,7 @@ class sniper:
         self.v1search = 0
         self.autoSearch = []
         self.found = []
-        self.enabledAuto = False
+        self.enabledAuto = True
 
         
     async def setup_accounts(self):
@@ -197,13 +197,13 @@ class sniper:
                     print(f"Auto enabled: {self.enabledAuto}\n\nLast V1 Search took: {self.v1search}ms\n\nLast V2 Search took: {self.v2search}ms\n\nTotal Searches: " + repr(self.totalSearches) + "\n\nSearch Logs:\n" + '\n'.join(log for log in self.searchLogs[-3:]) + f"\n\nBuy Logs:\nTotal Items bought: {len(self.buyLogs)}\n" + '\n'.join(log for log in self.buyLogs[-5:]) + "\n\nError Logs:\n" + '\n'.join(log for log in self.errorLogs[-5:]) + "\n\nAutosearch Logs:\n" + '\n'.join(log for log in self.autoSearch[-5:]))
                     await asyncio.sleep(self.waitTime)
     
-    @sio.event
-    async def connect():
-       print("Conncted to server.")
-
-    @sio.event
-    async def disconnect():
-      print("Disconnected from server.")
+    async def connect(self, data):
+       self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] AutoSearch Connceted to server")
+       self.enabledAuto = True
+       
+    async def disconnect(self, data):
+      self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] AutoSearch Disconnected from server")
+      self.enabledAuto = False
     
     async def new_auto_search_items(self, data, data2):
         self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Autosearch found {data2}")
@@ -233,8 +233,10 @@ class sniper:
         tasks = [self.searchv2() for _ in range(self.v2threads)]
         tasks.append(self.searchv1())
         if self.auto:
+            sio.on('connect', partial(self.connect, self))
+            sio.on('disconnect', partial(self.disconnect, self))
             try:await sio.connect("https://xolonoess.amaishn.repl.co", headers={"key": self.key}); sio.on("new_auto_search_items")(partial(self.new_auto_search_items, self)); self.enabledAuto = True
-            except: self.enabledAuto = False
+            except Exception as e: self.enabledAuto = False; self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] AutoSearch {e}")
         await asyncio.gather(*tasks)
 
 asyncio.run(sniper().run())
