@@ -18,6 +18,7 @@ class sniper:
             self.v2_safe_multiplier = content["antiratelimit"]["v2_safe_multiplier"]
             self.auto = content["auto_search"]['autosearch']
             self.key = content["auto_search"]["auto_search_key"]
+            self.webhook = content["webhook"]
         self.errorLogs = []
         self.buyLogs = []
         self.searchLogs = []
@@ -77,6 +78,9 @@ class sniper:
                 if response.status == 200:
                     resp = await response.json()
                     if not resp.get("purchased"):
+                        errors += 1
+                        if errors == 10:
+                            return
                         self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Failed to buy item {info['item_id']}, reason: {resp.get('errorMessage')}")
                         if resp.get("errorMessage", 0) == "QuantityExhausted":
                             self.items.remove(info['item_id'])
@@ -85,10 +89,10 @@ class sniper:
                             self.items.remove(info['item_id'])
                             return
                         continue
-                    self.buyLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Bought item {info['item_id']}")
-                    errors += 1
-                    if errors == 10:
-                        return
+                    msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Bought item {info['item_id']}"
+                    self.buyLogs.append(msg)
+                    if self.webhook['enabled']:
+                        async with session.post(self.webhook["url"], data={"content": msg}, ssl = False) as response: pass
                 else:
                     self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Failed to buy item {info['item_id']}")
                     errors += 1
@@ -112,7 +116,7 @@ class sniper:
                 self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V2 hit ratelimit")
 
     async def searchv2(self):
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET,verify_ssl=False)) as session: 
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET,ssl=False)) as session: 
             while True:
              try:
                 start_time = time.time()
@@ -125,7 +129,7 @@ class sniper:
                 for item in results:
                     if not item:
                         continue
-                    info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId"))}
+                    info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId")), "asset_type": item.get("AssetTypeId")}
                     if not info["price"]:
                         info["price"] = 0
                     if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
@@ -148,7 +152,7 @@ class sniper:
               
     async def searchv1(self):
         cycler = cycle(list(self.items))
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET,verify_ssl=False)) as session: 
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET,ssl=False)) as session: 
             while True:
                 try:
                     start_time = time.time()
@@ -161,7 +165,7 @@ class sniper:
                             self.searchLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V1 Searched total of {len(self.items)} items")
                             json_rep = await response.json()
                             for item in json_rep['data']:
-                                info = {"creator": item['creatorTargetId'], "price": item.get("price", 0), "productid_data": None, "collectibleItemId": item.get("collectibleItemId"), "item_id": int(item.get("id"))}
+                                info = {"creator": item['creatorTargetId'], "price": item.get("price", 0), "productid_data": None, "collectibleItemId": item.get("collectibleItemId"), "item_id": int(item.get("id")), "asset_type": item.get("assetType")}
                                 if not (item.get("priceStatus") != "Off Sale" and item.get('unitsAvailableForConsumption', 1) > 0) or info["price"] > self.globalPrice or item["saleLocationType"] == 'ExperiencesDevApiOnly':
                                     if info["price"] > self.globalPrice or item["saleLocationType"] == 'ExperiencesDevApiOnly' or item.get('unitsAvailableForConsumption', 1) == 0:
                                         self.items.remove(info['item_id'])
@@ -207,7 +211,7 @@ class sniper:
     
     async def new_auto_search_items(self, data, data2):
         self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Autosearch found {data2}")
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET,verify_ssl=False)) as session:
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET,ssl=False)) as session:
             if int(data2) in self.found: return
             async with session.get(
                 f"https://economy.roblox.com/v2/assets/{data2}/details",
@@ -218,7 +222,7 @@ class sniper:
                 if response.status == 200:
                     self.totalSearches += 1
                     item = await response.json()
-                    info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId"))}
+                    info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId")), "asset_type": item.get("AssetTypeId")}
                     if not info["price"]:
                         info["price"] = 0
                     if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
