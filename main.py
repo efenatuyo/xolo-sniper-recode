@@ -27,7 +27,7 @@ class sniper:
         self.v1search = 0
         self.autoSearch = []
         self.found = []
-        self.enabledAuto = self.autoSearch
+        self.enabledAuto = False
 
         
     async def setup_accounts(self):
