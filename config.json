@@ -7,7 +7,11 @@
     "threads": {
         "searcherv2_threads": 1,
         "buy_threads": 4
-    },  
+    },
+    "webhook": {
+        "enabled": false,
+        "url": ""
+    },
     "antiratelimit": {
         "v1_wait_time": 1,
         "v2_max_requests_per_minute": 1000,
