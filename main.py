@@ -35,8 +35,8 @@ class sniper:
         with open('config.json', 'r') as file: 
             content = json.load(file)
             search_cookie = content['cookies']["search_cookie"]
-            cookie = content['cookies']["buy_cookie"]
-        return {"cookie": cookie, "xcsrf_token": await self._get_xcsrf_token(cookie), "user_id": await self._get_user_id(cookie), "search_cookie": search_cookie, "search_xcsrf_token": await self._get_xcsrf_token(search_cookie)}
+            cookiee = content['cookies']["buy_cookie"]
+        return {"buy_cookies": [{"cookie": cookie, "xcsrf_token": await self._get_xcsrf_token(cookie), "user_id": await self._get_user_id(cookie)} for cookie in cookiee], "search_cookie": search_cookie, "search_xcsrf_token": await self._get_xcsrf_token(search_cookie)}
 
     async def _get_user_id(self, cookie) -> str:
        async with aiohttp.ClientSession(cookies={".ROBLOSECURITY": cookie}) as client:
@@ -55,14 +55,14 @@ class sniper:
                             "Could be due to an invalid Roblox Cookie")
               return xcsrf_token
     
-    async def buy_item(self, session, info):
+    async def buy_item(self, session, info, cookie_info):
          if info['item_id'] not in self.found: self.found.append(info['item_id'])
          errors = 0
          data = {
                "collectibleItemId": info["collectibleItemId"],
                "expectedCurrency": 1,
                "expectedPrice": info['price'],
-               "expectedPurchaserId": self.account['user_id'],
+               "expectedPurchaserId": cookie_info['user_id'],
                "expectedPurchaserType": "User",
                "expectedSellerId": info["creator"],
                "expectedSellerType": "User",
@@ -73,8 +73,8 @@ class sniper:
           try:
             async with session.post(f"https://apis.roblox.com/marketplace-sales/v1/item/{info['collectibleItemId']}/purchase-item",
                                  json=data,
-                                 headers={"x-csrf-token": self.account['xcsrf_token'], 'Accept-Encoding': 'gzip', 'Connection': 'keep-alive'},
-                                 cookies={".ROBLOSECURITY": self.account['cookie']}, ssl = False) as response:
+                                 headers={"x-csrf-token": cookie_info['xcsrf_token'], 'Accept-Encoding': 'gzip', 'Connection': 'keep-alive'},
+                                 cookies={".ROBLOSECURITY": cookie_info['cookie']}, ssl = False) as response:
                 if response.status == 200:
                     resp = await response.json()
                     if not resp.get("purchased"):
@@ -136,10 +136,10 @@ class sniper:
                         if info["price"] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly' or item.get('Remaining', 1) == 0:
                             self.items.remove(info['item_id'])
                         continue
-                    tasks = [asyncio.create_task(self.buy_item(session, info)) for i in range(self.buy_threads)]
                     if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
                         task = asyncio.create_task(session.post("https://xolonoess.amaishn.repl.co/items", headers={"itemid": str(info['item_id'])}))
                         tasks.append(task)
+                    tasks = [(asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads)) for cookie_info in self.account["buy_cookies"]]
                     await asyncio.gather(*tasks)
                     
              except Exception as e:
@@ -177,7 +177,7 @@ class sniper:
                                     if productid_response.status != 200:
                                         continue
                                     info["productid_data"] = (await productid_response.json())[0]['collectibleProductId']
-                                    tasks = [asyncio.create_task(self.buy_item(session, info)) for i in range(self.buy_threads)]
+                                    tasks = [(asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads)) for cookie_info in self.account["buy_cookies"]]
                                     if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
                                         task = asyncio.create_task(session.post("https://xolonoess.amaishn.repl.co/items", headers={"itemid": str(info['item_id'])}))
                                         tasks.append(task)
@@ -187,7 +187,8 @@ class sniper:
                             await asyncio.sleep(5)
                         elif response.status == 403:
                             if (await response.json())['message'] == "Token Validation Failed":
-                                self.account['xcsrf_token'] = await self._get_xcsrf_token(self.account['cookie'])
+                                for index in range(self.account["buy_cookies"]):
+                                    self.account['buy_cookies'][index]["cookie"] = await self._get_xcsrf_token(self.account['buy_cookies'][index]["cookie"])
                                 self.account['search_xcsrf_token'] = await self._get_xcsrf_token(self.account['search_cookie'])
                                 continue
                               
@@ -227,7 +228,7 @@ class sniper:
                         info["price"] = 0
                     if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
                         return
-                    tasks = [asyncio.create_task(self.buy_item(session, info)) for i in range(self.buy_threads)]
+                    tasks = [(asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads)) for cookie_info in self.account["buy_cookies"]]
                     await asyncio.gather(*tasks)
                     
                 elif response.status == 429:
