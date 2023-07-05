@@ -19,7 +19,7 @@
     },
     "cookies": {
         "search_cookie": "",
-        "buy_cookie": ""
+        "buy_cookie": [""]
     },
     "items": []
 }
