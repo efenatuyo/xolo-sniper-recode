@@ -187,8 +187,8 @@ class sniper:
                             await asyncio.sleep(5)
                         elif response.status == 403:
                             if (await response.json())['message'] == "Token Validation Failed":
-                                for index in range(self.account["buy_cookies"]):
-                                    self.account['buy_cookies'][index]["cookie"] = await self._get_xcsrf_token(self.account['buy_cookies'][index]["cookie"])
+                                for index in range(len(self.account["buy_cookies"])):
+                                    self.account['buy_cookies'][index]["xcsrf_token"] = await self._get_xcsrf_token(self.account['buy_cookies'][index]["cookie"])
                                 self.account['search_xcsrf_token'] = await self._get_xcsrf_token(self.account['search_cookie'])
                                 continue
                               
