@@ -20,6 +20,7 @@ class sniper:
             self.auto = content["auto_search"]['autosearch']
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
+        self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0]
         self.errorLogs = []
         self.buyLogs = []
         self.searchLogs = []
@@ -152,7 +153,7 @@ class sniper:
                             self.items.remove(info['item_id'])
                         continue
                     if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
-                        task = asyncio.create_task(session.post("https://xolonoess.amaishn.repl.co/items", headers={"itemid": str(info['item_id'])}))
+                        task = asyncio.create_task(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
                         tasks.append(task)
                     tasks = [asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
                     await asyncio.gather(*tasks)
@@ -193,7 +194,7 @@ class sniper:
                                     info["productid_data"] = (await productid_response.json())[0]['collectibleProductId']
                                     tasks = [asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
                                     if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
-                                        task = asyncio.create_task(session.post("https://xolonoess.amaishn.repl.co/items", headers={"itemid": str(info['item_id'])}))
+                                        task = asyncio.create_task(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
                                         tasks.append(task)
                                     await asyncio.gather(*tasks)
                         elif response.status == 429:
@@ -254,7 +255,7 @@ class sniper:
         if self.auto:
             sio.on('connect', partial(self.connect, self))
             sio.on('disconnect', partial(self.disconnect, self))
-            try:await sio.connect((requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0], headers={"key": self.key}); sio.on("new_auto_search_items")(partial(self.new_auto_search_items, self)); self.enabledAuto = True
+            try:await sio.connect(self.site, headers={"key": self.key}); sio.on("new_auto_search_items")(partial(self.new_auto_search_items, self)); self.enabledAuto = True
             except Exception as e: self.enabledAuto = False; self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] AutoSearch {e}")
         await asyncio.gather(*tasks)
 
