@@ -1,5 +1,5 @@
 from typing import final
-import aiohttp, asyncio, json, os, time, uuid, socket, socketio
+import aiohttp, asyncio, json, os, time, uuid, socket, socketio, requests
 from itertools import islice, cycle
 from functools import partial
 
@@ -254,7 +254,7 @@ class sniper:
         if self.auto:
             sio.on('connect', partial(self.connect, self))
             sio.on('disconnect', partial(self.disconnect, self))
-            try:await sio.connect("https://xolonoess.amaishn.repl.co", headers={"key": self.key}); sio.on("new_auto_search_items")(partial(self.new_auto_search_items, self)); self.enabledAuto = True
+            try:await sio.connect((requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0], headers={"key": self.key}); sio.on("new_auto_search_items")(partial(self.new_auto_search_items, self)); self.enabledAuto = True
             except Exception as e: self.enabledAuto = False; self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] AutoSearch {e}")
         await asyncio.gather(*tasks)
 
