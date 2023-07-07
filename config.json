@@ -6,6 +6,7 @@
     },
     "threads": {
         "searcherv2_threads": 1,
+        "searcherv3_threads": 10,
         "buy_threads": 4
     },
     "webhook": {
@@ -15,7 +16,9 @@
     "antiratelimit": {
         "v1_wait_time": 1,
         "v2_max_requests_per_minute": 1000,
-        "v2_safe_multiplier": 1.25
+        "v2_safe_multiplier": 1.25,
+        "v3_max_requests_per_minute": 10000,
+        "v3_safe_multiplier": 1.1
     },
     "cookies": {
         "search_cookie": "",
