@@ -14,23 +14,18 @@ class sniper:
             self.globalPrice = content["global_max_price"]
             self.waitTime = content["antiratelimit"]['v1_wait_time']
             self.v2threads = content["threads"]["searcherv2_threads"]
-            self.v3threads = content["threads"]["searcherv3_threads"]
             self.buy_threads = content['threads']['buy_threads']
             self.v2_max_requests_per_minute = content["antiratelimit"]["v2_max_requests_per_minute"]
             self.v2_safe_multiplier = content["antiratelimit"]["v2_safe_multiplier"]
-            self.v3_max_requests_per_minute = content["antiratelimit"]["v3_max_requests_per_minute"]
-            self.v3_safe_multiplier = content["antiratelimit"]["v3_safe_multiplier"]
             self.auto = content["auto_search"]['autosearch']
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
         self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0]
-        self.sitev3 = [string for string in (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site%20v3").text).split("\n") if string]
         self.errorLogs = []
         self.buyLogs = []
         self.searchLogs = []
         self.clear = "cls" if os.name == 'nt' else "clear"
         self.totalSearches = 0
-        self.v3search = 0
         self.v2search = 0
         self.v1search = 0
         self.autoSearch = []
@@ -63,7 +58,6 @@ class sniper:
               return xcsrf_token
     
     async def buy_item(self, session, info, cookie_info):
-         if info['item_id'] not in self.found: self.found.append(info['item_id'])
          errors = 0
          data = {
                "collectibleItemId": info["collectibleItemId"],
@@ -149,48 +143,6 @@ class sniper:
                 self.v2search = round((time.time() - start_time), 3)
                 await asyncio.sleep(((len(self.items) * self.v2threads) / self.v2_max_requests_per_minute) * self.v2_safe_multiplier)
 
-    async def fetch_item_details_v3(self, session, item_id):
-        async with session.get(
-            random.choice(self.sitev3),    
-            headers={'Accept-Encoding': 'gzip', 'Connection': 'keep-alive', "endpoint":f"https://economy.roblox.com/v2/assets/{item_id}/details"},
-            ssl=False
-        ) as response:
-            if response.status == 200:
-                tasks = []
-                self.totalSearches += 1
-                item = await response.json()
-                if not item:
-                    return
-                info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId"))} 
-                if not info["price"]:
-                    info["price"] = 0
-                if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
-                    if info["price"] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly' or item.get('Remaining', 1) == 0:
-                        self.items.remove(info['item_id'])
-                    return
-                if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
-                    task = asyncio.create_task(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
-                    tasks.append(task)
-                tasks = [asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
-                await asyncio.gather(*tasks)
-            elif response.status == 429:
-                self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V3 hit ratelimit")
-                
-    async def searchv3(self):
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)) as session:
-            while True:
-              try:
-                start_time = time.time()
-                tasks = []
-                for item_id in self.items:
-                    tasks.append(self.fetch_item_details_v3(session, item_id))
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-              except Exception as e:
-                  self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V3 {e}")
-              finally:
-                self.searchLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V3 Searched total of {len(self.items)} items")
-                self.v3search = round((time.time() - start_time), 3)
-                await asyncio.sleep(((len(self.items) * self.v3threads) / self.v3_max_requests_per_minute) * self.v3_safe_multiplier)
               
     async def searchv1(self):
         cycler = cycle(list(self.items))
@@ -241,7 +193,7 @@ class sniper:
                     self.v1search = round((time.time() - start_time), 3)
                     cycler = cycle(list(self.items))
                     os.system(self.clear)
-                    print(f"Auto enabled: {self.enabledAuto}\n\nLast V1 Search took: {self.v1search}ms\n\nLast V2 Search took: {self.v2search}ms\n\nLast V3 Search took: {self.v3search}ms\n\nTotal Searches: " + repr(self.totalSearches) + "\n\nSearch Logs:\n" + '\n'.join(log for log in self.searchLogs[-3:]) + f"\n\nBuy Logs:\nTotal Items bought: {len(self.buyLogs)}\n" + '\n'.join(log for log in self.buyLogs[-5:]) + "\n\nError Logs:\n" + '\n'.join(log for log in self.errorLogs[-5:]) + "\n\nAutosearch Logs:\n" + '\n'.join(log for log in self.autoSearch[-5:]))
+                    print(f"Auto enabled: {self.enabledAuto}\n\nLast V1 Search took: {self.v1search}ms\n\nLast V2 Search took: {self.v2search}ms\n\nTotal Searches: " + repr(self.totalSearches) + "\n\nSearch Logs:\n" + '\n'.join(log for log in self.searchLogs[-3:]) + f"\n\nBuy Logs:\nTotal Items bought: {len(self.buyLogs)}\n" + '\n'.join(log for log in self.buyLogs[-5:]) + "\n\nError Logs:\n" + '\n'.join(log for log in self.errorLogs[-5:]) + "\n\nAutosearch Logs:\n" + '\n'.join(log for log in self.autoSearch[-5:]))
                     await asyncio.sleep(self.waitTime)
     
     async def connect(self, data):
@@ -278,8 +230,6 @@ class sniper:
         
     async def run(self):
         tasks = [self.searchv2() for _ in range(self.v2threads)]
-        for i in range(self.v3threads):
-            tasks.append(self.searchv3())
         tasks.append(self.searchv1())
         if self.auto:
             sio.on('connect', partial(self.connect, self))
