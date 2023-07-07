@@ -1,5 +1,5 @@
 from typing import final
-import aiohttp, asyncio, json, os, time, uuid, socket, socketio, requests
+import aiohttp, asyncio, json, os, time, uuid, socket, socketio, requests, random
 from itertools import islice, cycle
 from functools import partial
 
@@ -24,7 +24,7 @@ class sniper:
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
         self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0]
-        self.sitev3 = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site%20v3").text).split("\n")[0]
+        self.sitev3 = [string for string in (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site%20v3").text).split("\n") if string]
         self.errorLogs = []
         self.buyLogs = []
         self.searchLogs = []
@@ -151,7 +151,7 @@ class sniper:
 
     async def fetch_item_details_v3(self, session, item_id):
         async with session.get(
-            self.sitev3,
+            random.choice(self.sitev3),    
             headers={'Accept-Encoding': 'gzip', 'Connection': 'keep-alive', "endpoint":f"https://economy.roblox.com/v2/assets/{item_id}/details"},
             ssl=False
         ) as response:
