@@ -80,9 +80,6 @@ class sniper:
                 if response.status == 200:
                     resp = await response.json()
                     if not resp.get("purchased"):
-                        errors += 1
-                        if errors == 10:
-                            return
                         self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Failed to buy item {info['item_id']}, reason: {resp.get('errorMessage')}")
                         if resp.get("errorMessage", 0) == "QuantityExhausted":
                             self.items.remove(info['item_id'])
@@ -91,22 +88,19 @@ class sniper:
                             self.items.remove(info['item_id'])
                             return
                         continue
-                    msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Bought item {info['item_id']}"
-                    self.buyLogs.append(msg)
-                    if self.webhook['enabled']:
-                        async with session.post(self.webhook["url"], data={"content": msg}, ssl = False) as response: pass
+                    self.buyLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Bought item {info['item_id']}")
+                    errors += 1
+                    if errors == 10:
+                        return
                 else:
-                    try: res=await response.json()
-                    except: res=None
-                    self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Failed to buy item {info['item_id']}, response: {res}")
+                    #self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Failed to buy item {info['item_id']}")
                     errors += 1
                     if errors == 10:
                         return
           except Exception as e:
             self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] {e}")
-
                 
-    async def fetch_item_details(self, session, item_id):
+    async def fetch_item_details_v2(self, session, item_id):
         async with session.get(
             f"https://economy.roblox.com/v2/assets/{item_id}/details",
             headers={'Accept-Encoding': 'gzip', 'Connection': 'keep-alive'},
@@ -114,12 +108,26 @@ class sniper:
             ssl=False
         ) as response:
             if response.status == 200:
+                tasks = []
                 self.totalSearches += 1
-                data = await response.json()
-                return data
+                item = await response.json()
+                if not item:
+                    return
+                info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId"))} 
+                if not info["price"]:
+                    info["price"] = 0
+                if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
+                    if info["price"] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly' or item.get('Remaining', 1) == 0:
+                        self.items.remove(info['item_id'])
+                    return
+                if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
+                    task = asyncio.create_task(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
+                    tasks.append(task)
+                tasks = [asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
+                await asyncio.gather(*tasks)
             elif response.status == 429:
                 self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V2 hit ratelimit")
-
+                
     async def searchv2(self):
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)) as session:
             while True:
@@ -127,43 +135,15 @@ class sniper:
                 start_time = time.time()
                 tasks = []
                 for item_id in self.items:
-                    tasks.append(self.fetch_item_details(session, item_id))
+                    tasks.append(self.fetch_item_details_v2(session, item_id))
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                for result, item in zip(self.items, results):
-                    if isinstance(item, Exception):
-                        self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V2 {item}")
-                        continue
-
-                    if not item:
-                        continue
-                    info = {
-                        "creator": item.get("Creator", {}).get('CreatorTargetId'),
-                        "price": item.get("PriceInRobux", 0),
-                        "productid_data": item.get("CollectibleProductId"),
-                        "collectibleItemId": item.get("CollectibleItemId"),
-                        "item_id": int(item.get("AssetId")),
-                        "asset_type": item.get("AssetTypeId")
-                    }
-                    if not info["price"]:
-                        info["price"] = 0
-
-                    if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
-                        if info["price"] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly' or item.get('Remaining', 1) == 0:
-                            self.items.remove(info['item_id'])
-                        continue
-                    if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
-                        task = asyncio.create_task(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
-                        tasks.append(task)
-                    tasks = [asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
-                    await asyncio.gather(*tasks)
               except Exception as e:
                   self.errorLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V2 {e}")
               finally:
                 self.searchLogs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] V2 Searched total of {len(self.items)} items")
                 self.v2search = round((time.time() - start_time), 3)
                 await asyncio.sleep(((len(self.items) * self.v2threads) / self.v2_max_requests_per_minute) * self.v2_safe_multiplier)
-                
+
               
     async def searchv1(self):
         cycler = cycle(list(self.items))
@@ -238,7 +218,7 @@ class sniper:
                 if response.status == 200:
                     self.totalSearches += 1
                     item = await response.json()
-                    info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId")), "asset_type": item.get("AssetTypeId")}
+                    info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId"))}
                     if not info["price"]:
                         info["price"] = 0
                     if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
