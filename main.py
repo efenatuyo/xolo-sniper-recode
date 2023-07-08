@@ -21,6 +21,7 @@ class sniper:
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
         self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0]
+        self.safePoints = {"v1": [114, 111, 98, 108, 111, 120], "v2": [114, 111, 112, 114, 111, 120, 121]}
         self.errorLogs = []
         self.buyLogs = []
         self.searchLogs = []
@@ -205,9 +206,15 @@ class sniper:
       self.enabledAuto = False
     
     async def new_auto_search_items(self, data, data2):
+        if isinstance(data2, dict):
+            if int(data2['item_id']) in self.found: return
+            self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Autosearch found {data2['item_id']}")
+            tasks = [asyncio.create_task(self.buy_item(session, data2, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
+            await asyncio.gather(*tasks)
+            return
+        if int(data2) in self.found: return
         self.autoSearch.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}] Autosearch found {data2}")
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET,ssl=False)) as session:
-            if int(data2) in self.found: return
             async with session.get(
                 f"https://economy.roblox.com/v2/assets/{data2}/details",
                 headers={'Accept-Encoding': 'gzip', 'Connection': 'keep-alive'},
