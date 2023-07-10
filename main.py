@@ -12,6 +12,9 @@ from functools import partial
 
 sio = socketio.AsyncClient()
 
+if os.name == 'nt':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 class Sniper:
     def __init__(self):
         self.account = asyncio.run(self.setup_accounts())
@@ -107,11 +110,13 @@ class Sniper:
                         self.log_purchase(info['item_id'])
             except Exception as e:
                 self.log_error(f"{e}")
+            finally:
+                data["idempotencyKey"] = str(uuid.uuid4())
 
     async def fetch_item_details_v2(self, session, item_id):
         async with session.get(
             f"https://economy.roblox.com/v2/assets/{item_id}/details",
-            headers={'Accept-Encoding': 'gzip', 'Connection': 'keep-alive'},
+            headers={'Accept-Encoding': 'gzip, deflate', 'Connection': 'keep-alive'},
             cookies={".ROBLOSECURITY": self.account['search_cookie']},
             ssl=False
         ) as response:
@@ -160,7 +165,7 @@ class Sniper:
                     async with session.post(
                         "https://catalog.roblox.com/v1/catalog/items/details",
                         json={"items": [{"itemType": "Asset", "id": id} for id in items]},
-                        headers={"x-csrf-token": self.account['search_xcsrf_token'], 'Accept-Encoding': 'gzip', 'Connection': 'keep-alive'},
+                        headers={"x-csrf-token": self.account['search_xcsrf_token'], 'Accept-Encoding': 'gzip, deflate', 'Connection': 'keep-alive'},
                         cookies={".ROBLOSECURITY": self.account['search_cookie']},
                         ssl=False
                     ) as response:
@@ -176,7 +181,7 @@ class Sniper:
                                 async with await session.post(
                                     "https://apis.roblox.com/marketplace-items/v1/items/details",
                                     json={"itemIds": [info['collectibleItemId']]},
-                                    headers={"x-csrf-token": self.account['search_xcsrf_token'], 'Accept': "application/json", 'Accept-Encoding': 'gzip', 'Connection': 'keep-alive'},
+                                    headers={"x-csrf-token": self.account['search_xcsrf_token'], 'Accept': "application/json", 'Accept-Encoding': 'gzip, deflate', 'Connection': 'keep-alive'},
                                     cookies={".ROBLOSECURITY": self.account['search_cookie']},
                                     ssl=False
                                 ) as productid_response:
@@ -229,7 +234,7 @@ class Sniper:
         self.log_search(f"AutoSearch found {data2}")
         async with session.get(
                 f"https://economy.roblox.com/v2/assets/{data2}/details",
-                headers={'Accept-Encoding': 'gzip', 'Connection': 'keep-alive'},
+                headers={'Accept-Encoding': 'gzip, deflate', 'Connection': 'keep-alive'},
                 cookies={".ROBLOSECURITY": self.account['search_cookie']},
                 ssl=False
             ) as response:
