@@ -5,8 +5,8 @@
         "auto_search_key": ""
     },
     "threads": {
-        "searcherv2_threads": 4,
-        "buy_threads": 1
+        "searcherv2_threads": 1,
+        "buy_threads": 4
     },
     "webhook": {
         "enabled": false,
