@@ -162,10 +162,15 @@ class Sniper:
                     if info["price"] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly' or item.get('Remaining', 1) == 0:
                         self.items.remove(info['item_id'])
                     return
+                tasks = []
                 if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
-                    for i in range(self.buy_threads):
-                        for cookie_info in self.account["buy_cookies"]:
-                           await asyncio.create_task(self.buy_item(session, info, cookie_info) for i in range(self.buy_threads))
+                    tasks.append(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
+                                    
+                for i in range(self.buy_threads):
+                    for cookie_info in self.account["buy_cookies"]:
+                        await asyncio.create_task(self.buy_item(session, info, cookie_info) for i in range(self.buy_threads))
+                await asyncio.gather(*tasks)
+                
             elif response.status == 429:
                 self.log_error(f"V2 hit ratelimit")
 
@@ -219,9 +224,14 @@ class Sniper:
                                     if productid_response.status != 200:
                                         continue
                                     info["productid_data"] = (await productid_response.json())[0]['collectibleProductId']
-                                    tasks = [self.buy_item(session, info, cookie_info) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
+                                    tasks = []
                                     if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
                                         tasks.append(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
+                                    
+                                    for i in range(self.buy_threads):
+                                        for cookie_info in self.account["buy_cookies"]:
+                                            await asyncio.create_task(self.buy_item(session, info, cookie_info) for i in range(self.buy_threads))
+                                    
                                     await asyncio.gather(*tasks)
                         elif response.status == 429:
                             self.log_error(f"V1 hit ratelimit")
@@ -277,8 +287,9 @@ class Sniper:
                         info["price"] = 0
                     if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
                         return
-                    tasks = [self.buy_item(session, info, cookie_info) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
-                    await asyncio.gather(*tasks)
+                    for i in range(self.buy_threads):
+                        for cookie_info in self.account["buy_cookies"]:
+                                await asyncio.create_task(self.buy_item(session, info, cookie_info) for i in range(self.buy_threads))
 
     async def run(self):
         tasks = [self.searchv2() for _ in range(self.v2threads)]
