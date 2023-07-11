@@ -29,6 +29,7 @@ class Sniper:
             self.v2_safe_multiplier = content["antiratelimit"]["v2_safe_multiplier"]
             self.auto = content["auto_search"]['autosearch']
             self.key = content["auto_search"]["auto_search_key"]
+            self.webhook = content["webhook"]
         self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0]
         self.errorLogs = []
         self.buyLogs = []
@@ -46,16 +47,17 @@ class Sniper:
             content = json.load(file)
             search_cookie = content['cookies']["search_cookie"]
             cookiee = content['cookies']["buy_cookie"]
-        return {"buy_cookies": [{"cookie": cookie, "xcsrf_token": await self._get_xcsrf_token(cookie), "user_id": await self._get_user_id(cookie)} for cookie in cookiee], "search_cookie": search_cookie, "search_xcsrf_token": await self._get_xcsrf_token(search_cookie)}
+        return {"buy_cookies": [{"cookie": cookie, "xcsrf_token": await self._get_xcsrf_token(cookie), "user_id": (await self._get_user_info(cookie))["id"], "user_name": (await self._get_user_info(cookie))["name"]} for cookie in cookiee], "search_cookie": search_cookie, "search_xcsrf_token": await self._get_xcsrf_token(search_cookie)}
 
-    async def _get_user_id(self, cookie) -> str:
+    async def _get_user_info(self, cookie) -> str:
         async with aiohttp.ClientSession(cookies={".ROBLOSECURITY": cookie}) as client:
             response = await client.get("https://users.roblox.com/v1/users/authenticated", ssl=False)
             data = await response.json()
-            if data.get('id') is None:
-                raise Exception("Couldn't scrape user id. Error:", data)
-            return data.get('id')
+            if data.get('id') is None or data.get('name') is None:
+                raise Exception("Couldn't scrape user info. Error:", data)
+            return {"id": data.get('id'), "name": data.get("name")}
 
+        
     async def _get_xcsrf_token(self, cookie) -> dict:
         async with aiohttp.ClientSession(cookies={".ROBLOSECURITY": cookie}) as client:
             response = await client.post("https://accountsettings.roblox.com/v1/email", ssl=False)
@@ -68,16 +70,41 @@ class Sniper:
         current_time = self.get_current_time()
         self.errorLogs.append(f"[{current_time}] {message}")
 
-    def log_purchase(self, item_id):
+    def log_purchase(self, item_id, serial):
         current_time = self.get_current_time()
-        self.buyLogs.append(f"[{current_time}] Bought item {item_id}")
+        self.buyLogs.append(f"[{current_time}] Bought item {item_id}, serial {serial}")
 
     def log_search(self, message):
         current_time = self.get_current_time()
         self.searchLogs.append(f"[{current_time}] {message}")
-
+    
+    def log_auto(self, message):
+        current_time = self.get_current_time()
+        self.autoSearch.append(f"[{current_time}] {message}")
+        
     def get_current_time(self):
         return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+
+    async def serial(self, account, asset_type, item_id):
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)) as session:
+            try:
+                async with session.get(f"https://inventory.roblox.com/v2/users/{account['user_id']}/inventory/{asset_type}?limit=10&sortOrder=Desc", cookies={".ROBLOSECURITY": account["cookie"]}) as response:
+                    for item_data in (await response.json())["data"]:
+                        if int(item_data["assetId"]) == int(item_id):
+                            return item_data["serialNumber"]
+                    return "not found"
+            except Exception as e:
+                return e
+
+    async def image_url(self, item_id):
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)) as session:
+            try:
+                async with session.get(f"https://thumbnails.roblox.com/v1/assets?assetIds={item_id}&size=250x250&format=png") as response:
+                    return (await response.json())["data"][0]['imageUrl']
+            except Exception as e:
+                return e
+            
+        
     async def buy_item(self, session, info, cookie_info):
         data = {
             "collectibleItemId": info["collectibleItemId"],
@@ -107,7 +134,10 @@ class Sniper:
                             if resp.get("errorMessage", 0) in ["QuantityExhausted", "InsufficientBalance"]:
                                 self.items.remove(info['item_id'])
                             return
-                        self.log_purchase(info['item_id'])
+                        serial = await self.serial(cookie_info, info["asset_type"], info["item_id"])
+                        self.log_purchase(info['item_id'], serial)
+                        if self.webhook["enabled"]:
+                            async with session.post(self.webhook["url"], json={"embeds": [{"title": f"Bought {info['item_id']}", "url": f"https://www.roblox.com/catalog/{info['item_id']}", "color": 3447003,  "fields": [{"name": f"Price: `{info['price']}`\nSerial: `#{serial}`\nBought from `{cookie_info['user_name']}`","value": "","inline": True}],"thumbnail": {"url": await self.image_url(info['item_id'])}}]}) as response: pass
             except Exception as e:
                 self.log_error(f"{e}")
             finally:
@@ -125,7 +155,7 @@ class Sniper:
                 item = await response.json()
                 if not item:
                     return
-                info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId"))}
+                info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId")), "asset_type": item.get("AssetTypeId")}
                 if not info["price"]:
                     info["price"] = 0
                 if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
@@ -213,11 +243,11 @@ class Sniper:
                     await asyncio.sleep(self.waitTime)
 
     async def connect(self, data):
-        self.log_search("AutoSearch connected to the server")
+        self.log_auto("AutoSearch connected to the server")
         self.enabledAuto = True
 
     async def disconnect(self, data):
-        self.log_search("AutoSearch disconnected from the server")
+        self.log_auto("AutoSearch disconnected from the server")
         self.enabledAuto = False
 
     async def new_auto_search_items(self, data, data2):
@@ -225,13 +255,13 @@ class Sniper:
         if isinstance(data2, dict):
             if int(data2['item_id']) in self.found:
                 return
-            self.log_search(f"AutoSearch found {data2['item_id']}")
+            self.log_auto(f"AutoSearch found {data2['item_id']}")
             tasks = [self.buy_item(session, data2, cookie_info) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
             await asyncio.gather(*tasks)
             return
         if int(data2) in self.found:
             return
-        self.log_search(f"AutoSearch found {data2}")
+        self.log_auto(f"AutoSearch found {data2}")
         async with session.get(
                 f"https://economy.roblox.com/v2/assets/{data2}/details",
                 headers={'Accept-Encoding': 'gzip, deflate', 'Connection': 'keep-alive'},
@@ -261,7 +291,8 @@ class Sniper:
                 self.enabledAuto = True
             except Exception as e:
                 self.enabledAuto = False
-                self.log_error(f"AutoSearch {e}")
+                self.log_auto(f"{e}")
         await asyncio.gather(*tasks)
+
 
 asyncio.run(Sniper().run())
