@@ -163,8 +163,9 @@ class Sniper:
                         self.items.remove(info['item_id'])
                     return
                 if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
-                    tasks = [self.buy_item(session, info, cookie_info) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
-                    await asyncio.gather(*tasks)
+                    for i in range(self.buy_threads):
+                        for cookie_info in self.account["buy_cookies"]:
+                           await asyncio.create_task(self.buy_item(session, info, cookie_info) for i in range(self.buy_threads))
             elif response.status == 429:
                 self.log_error(f"V2 hit ratelimit")
 
