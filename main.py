@@ -168,7 +168,7 @@ class Sniper:
                                     
                 for i in range(self.buy_threads):
                     for cookie_info in self.account["buy_cookies"]:
-                        await asyncio.create_task(self.buy_item(session, info, cookie_info) for i in range(self.buy_threads))
+                        await asyncio.create_task(self.buy_item(session, info, cookie_info))
                 await asyncio.gather(*tasks)
                 
             elif response.status == 429:
@@ -230,7 +230,7 @@ class Sniper:
                                     
                                     for i in range(self.buy_threads):
                                         for cookie_info in self.account["buy_cookies"]:
-                                            await asyncio.create_task(self.buy_item(session, info, cookie_info) for i in range(self.buy_threads))
+                                            await asyncio.create_task(self.buy_item(session, info, cookie_info))
                                     
                                     await asyncio.gather(*tasks)
                         elif response.status == 429:
@@ -289,7 +289,7 @@ class Sniper:
                         return
                     for i in range(self.buy_threads):
                         for cookie_info in self.account["buy_cookies"]:
-                                await asyncio.create_task(self.buy_item(session, info, cookie_info) for i in range(self.buy_threads))
+                                await asyncio.create_task(self.buy_item(session, info, cookie_info))
 
     async def run(self):
         tasks = [self.searchv2() for _ in range(self.v2threads)]
