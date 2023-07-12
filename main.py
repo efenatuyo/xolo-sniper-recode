@@ -143,7 +143,7 @@ class Sniper:
             finally:
                 data["idempotencyKey"] = str(uuid.uuid4())
 
-    async def fetch_item_details_v2(self, session, item_id):
+    async def fetch_item_details_v2(self, session, item_id, method="normal"):
         async with session.get(
             f"https://economy.roblox.com/v2/assets/{item_id}/details",
             headers={'Accept-Encoding': 'gzip, deflate', 'Connection': 'keep-alive'},
@@ -158,14 +158,18 @@ class Sniper:
                 info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId")), "asset_type": item.get("AssetTypeId")}
                 if not info["price"]:
                     info["price"] = 0
-                if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
+                tasks = []
+                if method == "normal":
+                  if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
                     if info["price"] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly' or item.get('Remaining', 1) == 0:
                         self.items.remove(info['item_id'])
                     return
-                tasks = []
-                if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
+                  if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
                     tasks.append(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
-                                    
+                else:
+                  if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > 0 or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
+                      return
+                                      
                 for i in range(self.buy_threads):
                     for cookie_info in self.account["buy_cookies"]:
                         await asyncio.create_task(self.buy_item(session, info, cookie_info))
@@ -273,23 +277,7 @@ class Sniper:
         if int(data2) in self.found:
             return
         self.log_auto(f"AutoSearch found {data2}")
-        async with session.get(
-                f"https://economy.roblox.com/v2/assets/{data2}/details",
-                headers={'Accept-Encoding': 'gzip, deflate', 'Connection': 'keep-alive'},
-                cookies={".ROBLOSECURITY": self.account['search_cookie']},
-                ssl=False
-            ) as response:
-                if response.status == 200:
-                    self.totalSearches += 1
-                    item = await response.json()
-                    info = {"creator": item.get("Creator", {}).get('CreatorTargetId'), "price": item.get("PriceInRobux", 0), "productid_data": item.get("CollectibleProductId"), "collectibleItemId": item.get("CollectibleItemId"), "item_id": int(item.get("AssetId"))}
-                    if not info["price"]:
-                        info["price"] = 0
-                    if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
-                        return
-                    for i in range(self.buy_threads):
-                        for cookie_info in self.account["buy_cookies"]:
-                                await asyncio.create_task(self.buy_item(session, info, cookie_info))
+        await self.fetch_item_details_v2(session, data2, method="auto")
 
     async def run(self):
         tasks = [self.searchv2() for _ in range(self.v2threads)]
