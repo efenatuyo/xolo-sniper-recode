@@ -211,7 +211,8 @@ class Sniper:
                             self.log_wait_time("V2", wait_time)
                             await asyncio.sleep(wait_time)
                         start_time = time.time()
-                    await asyncio.sleep(0)
+                    await asyncio.sleep((len(self.items) * self.v2threads) / self.v2_max_requests_per_minute)
+
 
     async def searchv1(self):
         cycler = cycle(list(self.items))
