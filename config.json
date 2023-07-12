@@ -14,7 +14,8 @@
     },
     "antiratelimit": {
         "v1_wait_time": 1,
-        "v2_max_requests_per_minute": 1000
+        "v2_max_requests_per_minute": 1000,
+        "ai_sleep": false
     },
     "cookies": {
         "search_cookie": "",
