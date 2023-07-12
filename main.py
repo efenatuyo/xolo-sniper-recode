@@ -7,10 +7,11 @@ import uuid
 import socketio
 import requests
 import socket
+import random
 from itertools import islice, cycle
 from functools import partial
 
-sio = socketio.AsyncClient()
+sio = socketio.AsyncClient(ssl_verify=False)
 
 if os.name == 'nt':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -25,13 +26,13 @@ class Sniper:
             self.waitTime = content["antiratelimit"]['v1_wait_time']
             self.v2threads = content["threads"]["searcherv2_threads"]
             self.buy_threads = content['threads']['buy_threads']
-            self.v2_max_requests_per_minute = content["antiratelimit"]["v2_max_requests_per_minute"]
-            self.v2_safe_multiplier = content["antiratelimit"]["v2_safe_multiplier"]
+            self.v2_max_requests_per_minute = content["antiratelimit"]["v2_max_requests_per_minute"] / self.v2threads
             self.auto = content["auto_search"]['autosearch']
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
         self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0]
         self.errorLogs = []
+        self.waitLogs = []
         self.buyLogs = []
         self.searchLogs = []
         self.clear = "cls" if os.name == 'nt' else "clear"
@@ -66,6 +67,10 @@ class Sniper:
                 raise Exception("An error occurred while getting the X-CSRF-TOKEN. Could be due to an invalid Roblox Cookie")
             return xcsrf_token
 
+    def log_wait_time(self, task, time):
+        current_time = self.get_current_time()
+        self.waitLogs.append(f"[{current_time}] {task} sleeping {time}s")
+        
     def log_error(self, message):
         current_time = self.get_current_time()
         self.errorLogs.append(f"[{current_time}] {message}")
@@ -177,8 +182,11 @@ class Sniper:
                 
             elif response.status == 429:
                 self.log_error(f"V2 hit ratelimit")
-
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+                
     async def searchv2(self):
+        request_count = 0
+        start_time_x = time.time()
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)) as session:
             while True:
                 try:
@@ -193,7 +201,16 @@ class Sniper:
                 finally:
                     self.log_search(f"V2 Searched a total of {len(self.items)} items")
                     self.v2search = round((time.time() - start_time), 3)
-                    await asyncio.sleep(((len(self.items) * self.v2threads) / self.v2_max_requests_per_minute) * self.v2_safe_multiplier)
+                    elapsed_time = time.time() - start_time
+                    request_count += len(self.items)
+                    if request_count >= self.v2_max_requests_per_minute:
+                        request_count = 0
+                        elapsed_time = time.time() - start_time
+                        if elapsed_time < 60.0:
+                            wait_time = 60.0 - elapsed_time
+                            self.log_wait_time("V2", wait_time)
+                            await asyncio.sleep(wait_time)
+                        start_time = time.time()
 
     async def searchv1(self):
         cycler = cycle(list(self.items))
@@ -254,7 +271,7 @@ class Sniper:
                     self.v1search = round((time.time() - start_time), 3)
                     cycler = cycle(list(self.items))
                     os.system(self.clear)
-                    print(f"Auto enabled: {self.enabledAuto}\n\nLast V1 Search took: {self.v1search}ms\n\nLast V2 Search took: {self.v2search}ms\n\nTotal Searches: {self.totalSearches}\n\nSearch Logs:\n" + '\n'.join(log for log in self.searchLogs[-3:]) + f"\n\nBuy Logs:\nTotal Items bought: {len(self.buyLogs)}\n" + '\n'.join(log for log in self.buyLogs[-5:]) + "\n\nError Logs:\n" + '\n'.join(log for log in self.errorLogs[-5:]) + "\n\nAutosearch Logs:\n" + '\n'.join(log for log in self.autoSearch[-5:]))
+                    print(f"Auto enabled: {self.enabledAuto}\n\nLast V1 Search took: {self.v1search}ms\n\nLast V2 Search took: {self.v2search}ms\n\nTotal Searches: {self.totalSearches}\n\nSearch Logs:\n" + '\n'.join(log for log in self.searchLogs[-3:]) + "\n\nWait Logs:\n" + '\n'.join(log for log in self.waitLogs[-3:]) + f"\n\nBuy Logs:\nTotal Items bought: {len(self.buyLogs)}\n" + '\n'.join(log for log in self.buyLogs[-5:]) + "\n\nError Logs:\n" + '\n'.join(log for log in self.errorLogs[-5:]) + "\n\nAutosearch Logs:\n" + '\n'.join(log for log in self.autoSearch[-5:]))
                     await asyncio.sleep(self.waitTime)
 
     async def connect(self, data):
@@ -271,8 +288,9 @@ class Sniper:
             if int(data2['item_id']) in self.found:
                 return
             self.log_auto(f"AutoSearch found {data2['item_id']}")
-            tasks = [self.buy_item(session, data2, cookie_info) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
-            await asyncio.gather(*tasks)
+            for i in range(self.buy_threads):
+                    for cookie_info in self.account["buy_cookies"]:
+                            await asyncio.create_task(self.buy_item(session, data2, cookie_info))
             return
         if int(data2) in self.found:
             return
