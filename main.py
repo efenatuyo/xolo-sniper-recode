@@ -27,7 +27,6 @@ class Sniper:
             self.v2threads = content["threads"]["searcherv2_threads"]
             self.buy_threads = content['threads']['buy_threads']
             self.v2_max_requests_per_minute = content["antiratelimit"]["v2_max_requests_per_minute"] / self.v2threads
-            self.ai = content["antiratelimit"]["ai_sleep"]
             self.auto = content["auto_search"]['autosearch']
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
@@ -170,15 +169,13 @@ class Sniper:
                     if info["price"] > self.globalPrice or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly' or item.get('Remaining', 1) == 0:
                         self.items.remove(info['item_id'])
                     return
-                  if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
-                    tasks.append(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
                 else:
                   if not (item.get("IsForSale") and item.get('Remaining', 1) != 0) or info['price'] > 0 or item.get("SaleLocation", "g") == 'ExperiencesDevApiOnly':
                       return
                                       
-                for i in range(self.buy_threads):
-                    for cookie_info in self.account["buy_cookies"]:
-                        await asyncio.create_task(self.buy_item(session, info, cookie_info))
+                tasks = [asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
+                if method == "normal" and self.auto and info['price'] == 0 and info['item_id'] not in self.found:
+                    tasks.append(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
                 await asyncio.gather(*tasks)
                 
             elif response.status == 429:
@@ -186,8 +183,6 @@ class Sniper:
                 await asyncio.sleep(random.uniform(0.5, 1.0))
                 
     async def searchv2(self):
-        request_count = 0
-        start_time_x = time.time()
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)) as session:
             while True:
                 try:
@@ -202,18 +197,7 @@ class Sniper:
                 finally:
                     self.log_search(f"V2 Searched a total of {len(self.items)} items")
                     self.v2search = round((time.time() - start_time), 3)
-                    elapsed_time = time.time() - start_time
-                    request_count += len(self.items)
                     await asyncio.sleep((len(self.items) * self.v2threads))
-                    if self.ai:
-                     if request_count >= self.v2_max_requests_per_minute:
-                        request_count = 0
-                        elapsed_time = time.time() - start_time
-                        if elapsed_time < 60.0:
-                            wait_time = 60.0 - elapsed_time
-                            self.log_wait_time("V2", wait_time)
-                            await asyncio.sleep(wait_time)
-                        start_time = time.time()
 
 
     async def searchv1(self):
@@ -249,13 +233,9 @@ class Sniper:
                                     if productid_response.status != 200:
                                         continue
                                     info["productid_data"] = (await productid_response.json())[0]['collectibleProductId']
-                                    tasks = []
+                                    tasks = [asyncio.create_task(self.buy_item(session, info, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
                                     if self.auto and info['price'] == 0 and info['item_id'] not in self.found:
                                         tasks.append(session.post(f"{self.site}/items", headers={"itemid": str(info['item_id'])}))
-                                    
-                                    for i in range(self.buy_threads):
-                                        for cookie_info in self.account["buy_cookies"]:
-                                            await asyncio.create_task(self.buy_item(session, info, cookie_info))
                                     
                                     await asyncio.gather(*tasks)
                         elif response.status == 429:
@@ -292,9 +272,8 @@ class Sniper:
             if int(data2['item_id']) in self.found:
                 return
             self.log_auto(f"AutoSearch found {data2['item_id']}")
-            for i in range(self.buy_threads):
-                    for cookie_info in self.account["buy_cookies"]:
-                            await asyncio.create_task(self.buy_item(session, data2, cookie_info))
+            tasks = [asyncio.create_task(self.buy_item(session, data2, cookie_info)) for i in range(self.buy_threads) for cookie_info in self.account["buy_cookies"]]
+            await asyncio.gather(*tasks)
             return
         if int(data2) in self.found:
             return
