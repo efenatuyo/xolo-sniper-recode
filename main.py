@@ -203,6 +203,7 @@ class Sniper:
                     self.v2search = round((time.time() - start_time), 3)
                     elapsed_time = time.time() - start_time
                     request_count += len(self.items)
+                    await asyncio.sleep((len(self.items) * self.v2threads) / self.v2_max_requests_per_minute)
                     if request_count >= self.v2_max_requests_per_minute:
                         request_count = 0
                         elapsed_time = time.time() - start_time
@@ -211,7 +212,6 @@ class Sniper:
                             self.log_wait_time("V2", wait_time)
                             await asyncio.sleep(wait_time)
                         start_time = time.time()
-                    await asyncio.sleep((len(self.items) * self.v2threads) / self.v2_max_requests_per_minute)
 
 
     async def searchv1(self):
