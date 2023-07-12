@@ -27,6 +27,7 @@ class Sniper:
             self.v2threads = content["threads"]["searcherv2_threads"]
             self.buy_threads = content['threads']['buy_threads']
             self.v2_max_requests_per_minute = content["antiratelimit"]["v2_max_requests_per_minute"] / self.v2threads
+            self.ai = content["antiratelimit"]["ai_sleep"]
             self.auto = content["auto_search"]['autosearch']
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
@@ -203,8 +204,9 @@ class Sniper:
                     self.v2search = round((time.time() - start_time), 3)
                     elapsed_time = time.time() - start_time
                     request_count += len(self.items)
-                    await asyncio.sleep((len(self.items) * self.v2threads) / self.v2_max_requests_per_minute)
-                    if request_count >= self.v2_max_requests_per_minute:
+                    await asyncio.sleep((len(self.items) * self.v2threads))
+                    if self.ai:
+                     if request_count >= self.v2_max_requests_per_minute:
                         request_count = 0
                         elapsed_time = time.time() - start_time
                         if elapsed_time < 60.0:
