@@ -38,7 +38,7 @@ class Sniper:
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
             self.api = content["api"]
-        self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0]
+        self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site2").text).split("\n")[0]
         self.errorLogs = []
         self.waitLogs = []
         self.buyLogs = []
