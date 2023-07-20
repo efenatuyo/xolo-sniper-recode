@@ -7,9 +7,11 @@ import uuid
 import socketio
 import requests
 import socket
-import random
 from itertools import islice, cycle
 from functools import partial
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from uvicorn import Config, Server
 
 sio = socketio.AsyncClient(ssl_verify=False)
 
@@ -18,19 +20,25 @@ if os.name == 'nt':
 
 class Sniper:
     def __init__(self):
+        self.app = FastAPI()
         self.account = asyncio.run(self.setup_accounts())
         with open('config.json', 'r') as file:
             content = json.load(file)
             self.items = content['items']
             self.globalPrice = content["global_max_price"]
-            self.waitTime = content["antiratelimit"]['v1_wait_time']
+            self.v1waitTime = content["antiratelimit"]['v1_wait_time']
             self.v2threads = content["threads"]["searcherv2_threads"]
             self.buy_threads = content['threads']['buy_threads']
-            self.v2_max_requests_per_minute = content["antiratelimit"]["v2_max_requests_per_minute"] / self.v2threads
+            self.autov2waitTime = content["antiratelimit"]["v2_auto_wait_time"]
+            if self.autov2waitTime:
+                self.v2waitTime = 0
+            else:
+                self.v2waitTime = content["antiratelimit"]["v2_wait_time"]
             self.auto = content["auto_search"]['autosearch']
             self.key = content["auto_search"]["auto_search_key"]
             self.webhook = content["webhook"]
-        self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site").text).split("\n")[0]
+            self.api = content["api"]
+        self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site2").text).split("\n")[0]
         self.errorLogs = []
         self.waitLogs = []
         self.buyLogs = []
@@ -42,7 +50,103 @@ class Sniper:
         self.autoSearch = []
         self.found = []
         self.enabledAuto = False
+        self.v2avgSpeed = []
+        
+        @self.app.post("/")
+        async def root(request: Request):
+            methods = {
+                "stats": "Get the bots stats",
+                "current_ids": "Get the current ids",
+                "add_ids": "add ids",
+                "remove_ids": "remove ids"
+            }
+            headers = request.headers
+            if not headers.get("key", "e").lower() == self.api.get("key"):
+                return JSONResponse(status_code=403, content={"message": "Invalid Key"})
+            
+            if not headers.get("method_sniper", "e").lower() in methods:
+                return JSONResponse(status_code=400, content={"message": "Invalid method"})
+            
+            response = await (getattr(self, headers.get("method_sniper", "e").lower(), None))(ids=headers.get("ids", []))
 
+            return JSONResponse(status_code=response.get("status"), content=response.get("content"))
+        
+        asyncio.run(self.start())
+    
+    async def add_ids(self, **kwargs):
+      try:
+        ids = json.loads(kwargs.get("ids", "[]"))
+        if not isinstance(ids, list):
+            return {"status": 400, "content": {"message": "ids must be a list"}}
+        
+        if len(ids) == 0:
+           return {"status": 400, "content": {"message": "must provide atleast one id"}}
+        
+        responses = []
+        for item_id in ids:
+            try: 
+                int(item_id)
+            except: 
+                responses.append({"id": item_id, "message": "item id is not a number"}); continue
+            if int(item_id) in self.items: 
+                responses.append({"id": item_id, "message": "item id is already in itemd"}); continue
+            self.items.append(int(item_id))
+            responses.append({"id": item_id, "message": "added item id to items"}); continue
+        return {"status": 200, "content": {"data": responses}}
+
+      except Exception as e:
+          return {"status": 500, "content": {"message": e}}
+
+    async def remove_ids(self, **kwargs):
+      try:
+        ids = json.loads(kwargs.get("ids", "[]"))
+        if not isinstance(ids, list):
+            return {"status": 400, "content": {"message": "ids must be a list"}}
+        
+        if len(ids) == 0:
+           return {"status": 400, "content": {"message": "must provide atleast one id"}}
+        
+        responses = []
+        for item_id in ids:
+            try: 
+                int(item_id)
+            except: 
+                responses.append({"id": item_id, "message": "item id is not a number"}); continue
+            if not int(item_id) in self.items: 
+                responses.append({"id": item_id, "message": "item id is not in itemd"}); continue
+            self.items.remove(int(item_id))
+            responses.append({"id": item_id, "message": "removed item id from items"}); continue
+        return {"status": 200, "content": {"data": responses}}
+      
+      except Exception as e:
+          return {"status": 500, "content": {"message": e}}
+
+      
+    async def current_ids(self, **kwargs):
+      try:
+        return {"status": 200, "content": {"ids": self.items}}
+      except Exception as e:
+          return {"status": 500, "content": {"message": e}}
+      
+    async def stats(self, **kwargs):
+      try:
+        return {"status": 200, "content": {"errorLogs": self.errorLogs[-3:], "waitLogs": self.waitLogs[-3:], "buyLogs": self.buyLogs[-3:], "searchLogs": self.searchLogs[-3:], "totalSearches": self.totalSearches, "v2speed": self.v2search, "v1speed": self.v1search, "enabled_auto": self.enabledAuto}}
+      except Exception as e:
+          return {"status": 500, "content": {"message": e}}
+          
+    async def start(self):
+        tasks = []
+        tasks.append(asyncio.create_task(self.run()))
+        if self.api.get("enabled"):
+            tasks.append(asyncio.create_task(self.start_server()))
+        await asyncio.gather(*tasks)
+        
+    async def start_server(self):
+        config = Config(app=self.app, host="0.0.0.0", port=self.api.get("port", 8000))
+        server = Server(config)
+        await server.serve()
+    
+    
     async def setup_accounts(self):
         with open('config.json', 'r') as file:
             content = json.load(file)
@@ -69,7 +173,7 @@ class Sniper:
 
     def log_wait_time(self, task, time):
         current_time = self.get_current_time()
-        self.waitLogs.append(f"[{current_time}] {task} sleeping {time}s")
+        self.waitLogs.append(f"[{current_time}] {task} changed wait time to {time}s")
         
     def log_error(self, message):
         current_time = self.get_current_time()
@@ -180,7 +284,6 @@ class Sniper:
                 
             elif response.status == 429:
                 self.log_error(f"V2 hit ratelimit")
-                await asyncio.sleep(random.uniform(0.5, 1.0))
                 
     async def searchv2(self):
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)) as session:
@@ -197,7 +300,13 @@ class Sniper:
                 finally:
                     self.log_search(f"V2 Searched a total of {len(self.items)} items")
                     self.v2search = round((time.time() - start_time), 3)
-                    await asyncio.sleep((len(self.items) * self.v2threads))
+                    self.v2avgSpeed.append((time.time() - start_time))
+                    if self.autov2waitTime:
+                        old = float(self.v2waitTime)
+                        self.v2waitTime = max((60 / 1000) - max(sum(list(self.v2avgSpeed[-1:-11:-1])) / len(self.v2avgSpeed[-1:-11:-1]), 0), 0) * (self.v2threads * len(self.items))
+                        if old != float(self.v2waitTime):
+                            self.log_wait_time("V2", max((60 / 1000) - max(sum(list(self.v2avgSpeed[-1:-11:-1])) / len(self.v2avgSpeed[-1:-11:-1]), 0), 0) * (self.v2threads * len(self.items)))
+                    await asyncio.sleep(self.v2waitTime)
 
 
     async def searchv1(self):
@@ -256,7 +365,7 @@ class Sniper:
                     cycler = cycle(list(self.items))
                     os.system(self.clear)
                     print(f"Auto enabled: {self.enabledAuto}\n\nLast V1 Search took: {self.v1search}ms\n\nLast V2 Search took: {self.v2search}ms\n\nTotal Searches: {self.totalSearches}\n\nSearch Logs:\n" + '\n'.join(log for log in self.searchLogs[-3:]) + "\n\nWait Logs:\n" + '\n'.join(log for log in self.waitLogs[-3:]) + f"\n\nBuy Logs:\nTotal Items bought: {len(self.buyLogs)}\n" + '\n'.join(log for log in self.buyLogs[-5:]) + "\n\nError Logs:\n" + '\n'.join(log for log in self.errorLogs[-5:]) + "\n\nAutosearch Logs:\n" + '\n'.join(log for log in self.autoSearch[-5:]))
-                    await asyncio.sleep(self.waitTime)
+                    await asyncio.sleep(self.v1waitTime)
 
     async def connect(self, data):
         self.log_auto("AutoSearch connected to the server")
@@ -295,5 +404,4 @@ class Sniper:
                 self.log_auto(f"{e}")
         await asyncio.gather(*tasks)
 
-
-asyncio.run(Sniper().run())
+Sniper()

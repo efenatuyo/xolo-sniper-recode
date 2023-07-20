@@ -14,8 +14,13 @@
     },
     "antiratelimit": {
         "v1_wait_time": 1,
-        "v2_max_requests_per_minute": 1000,
-        "ai_sleep": false
+        "v2_wait_time": 0,
+        "v2_auto_wait_time": true
+    },
+    "api": {
+        "enabled": false,
+        "key": "abcdkey",
+        "port": 8000
     },
     "cookies": {
         "search_cookie": "",
