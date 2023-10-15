@@ -12,6 +12,7 @@ from functools import partial
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from uvicorn import Config, Server
+from collections import deque
 
 sio = socketio.AsyncClient(ssl_verify=False)
 
@@ -39,15 +40,15 @@ class Sniper:
             self.webhook = content["webhook"]
             self.api = content["api"]
         self.site = (requests.get("https://raw.githubusercontent.com/efenatuyo/xolo-sniper-recode/main/site2").text).split("\n")[0]
-        self.errorLogs = []
-        self.waitLogs = []
-        self.buyLogs = []
-        self.searchLogs = []
+        self.errorLogs = deque(maxlen=3)
+        self.waitLogs = deque(maxlen=3)
+        self.buyLogs = deque(maxlen=3)
+        self.searchLogs = deque(maxlen=3)
         self.clear = "cls" if os.name == 'nt' else "clear"
         self.totalSearches = 0
         self.v2search = 0
         self.v1search = 0
-        self.autoSearch = []
+        self.autoSearch = deque(maxlen=5)
         self.found = []
         self.enabledAuto = False
         self.v2avgSpeed = []
@@ -130,7 +131,7 @@ class Sniper:
       
     async def stats(self, **kwargs):
       try:
-        return {"status": 200, "content": {"errorLogs": self.errorLogs[-3:], "waitLogs": self.waitLogs[-3:], "buyLogs": self.buyLogs[-3:], "searchLogs": self.searchLogs[-3:], "totalSearches": self.totalSearches, "v2speed": self.v2search, "v1speed": self.v1search, "enabled_auto": self.enabledAuto}}
+        return {"status": 200, "content": {"errorLogs": self.errorLogs, "waitLogs": self.waitLogs, "buyLogs": self.buyLogs, "searchLogs": self.searchLogs, "totalSearches": self.totalSearches, "v2speed": self.v2search, "v1speed": self.v1search, "enabled_auto": self.enabledAuto}}
       except Exception as e:
           return {"status": 500, "content": {"message": e}}
           
@@ -364,7 +365,7 @@ class Sniper:
                     self.v1search = round((time.time() - start_time), 3)
                     cycler = cycle(list(self.items))
                     os.system(self.clear)
-                    print(f"Auto enabled: {self.enabledAuto}\n\nLast V1 Search took: {self.v1search}ms\n\nLast V2 Search took: {self.v2search}ms\n\nTotal Searches: {self.totalSearches}\n\nSearch Logs:\n" + '\n'.join(log for log in self.searchLogs[-3:]) + "\n\nWait Logs:\n" + '\n'.join(log for log in self.waitLogs[-3:]) + f"\n\nBuy Logs:\nTotal Items bought: {len(self.buyLogs)}\n" + '\n'.join(log for log in self.buyLogs[-5:]) + "\n\nError Logs:\n" + '\n'.join(log for log in self.errorLogs[-5:]) + "\n\nAutosearch Logs:\n" + '\n'.join(log for log in self.autoSearch[-5:]))
+                    print(f"Auto enabled: {self.enabledAuto}\n\nLast V1 Search took: {self.v1search}ms\n\nLast V2 Search took: {self.v2search}ms\n\nTotal Searches: {self.totalSearches}\n\nSearch Logs:\n" + '\n'.join(log for log in self.searchLogs) + "\n\nWait Logs:\n" + '\n'.join(log for log in self.waitLogs) + f"\n\nBuy Logs:\nTotal Items bought: {len(self.buyLogs)}\n" + '\n'.join(log for log in self.buyLogs) + "\n\nError Logs:\n" + '\n'.join(log for log in self.errorLogs) + "\n\nAutosearch Logs:\n" + '\n'.join(log for log in self.autoSearch))
                     await asyncio.sleep(self.v1waitTime)
 
     async def connect(self, data):
